@@ -26,8 +26,8 @@ except Exception:
     is_cloud = bool(os.environ.get("GROQ_API_KEY"))
 
 if is_cloud:
-    model_label = "cloud-hosted Llama 4 Scout Vision via Groq"
-    status_badge = "☁️ **Active Architecture:** Cloud Inference (`meta-llama/llama-4-scout-17b-16e-instruct` via Groq)"
+    model_label = "cloud-hosted Qwen 3.8 Vision via Groq"
+    status_badge = "☁️ **Active Architecture:** Cloud Inference (`qwen/qwen3.8-27b` via Groq)"
 else:
     model_label = "local Llama 3.2 Vision via Ollama"
     status_badge = "💻 **Active Architecture:** Local Edge Inference (`llama3.2-vision` via Ollama)"

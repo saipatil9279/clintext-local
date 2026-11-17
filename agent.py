@@ -20,10 +20,11 @@ if not groq_api_key:
 
 # Route the client connection based on the key
 # Route the client connection based on the key
+# Route the client connection based on the key
 if groq_api_key:
     # CLOUD MODE: Groq Vision API
     client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_api_key)
-    MODEL_NAME = "meta-llama/llama-4-scout-17b-16e-instruct"
+    MODEL_NAME = "qwen/qwen3.8-27b"
     print("Agent initialized in CLOUD MODE (Groq Vision)")
 else:
     # LOCAL MODE: Ollama Vision
