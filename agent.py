@@ -1,15 +1,12 @@
 import os
-import base64
 import streamlit as st
 from openai import OpenAI
-import google.generativeai as genai
 from datasets import load_dataset
 import pandas as pd
 
 # -----------------------------------------
 # DUAL ARCHITECTURE ROUTING (Multimodal)
 # -----------------------------------------
-# Safely check for Gemini API key
 gemini_api_key = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -20,10 +17,12 @@ except FileNotFoundError:
 if not gemini_api_key:
     gemini_api_key = os.environ.get("GEMINI_API_KEY")
 
-# Route the client connection based on the key
 if gemini_api_key:
-    # CLOUD MODE: Gemini 1.5 Flash
-    genai.configure(api_key=gemini_api_key)
+    # CLOUD MODE: Gemini via OpenAI Compatibility API
+    client = OpenAI(
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=gemini_api_key
+    )
     MODEL_NAME = "gemini-1.5-flash"
     print("Agent initialized in CLOUD MODE (Gemini Vision)")
 else:
@@ -69,60 +68,29 @@ def extract_clinical_data(text: str = "", image_base64: str = None):
     Return valid JSON only, with no markdown code block formatting or extra conversational text.
     """
 
-    if gemini_api_key:
-        # --- GEMINI EXECUTION (CLOUD) ---
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=system_instructions
+    # We use the exact same payload structure for both Local Edge and Cloud!
+    content_payload = [{"type": "text", "text": system_instructions}]
+    
+    if text.strip():
+        content_payload.append({
+            "type": "text", 
+            "text": f"Clinical Note Text:\n{text[:3000]}"
+        })
+        
+    if image_base64:
+        content_payload.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{image_base64}"
+            }
+        })
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": content_payload}],
+            temperature=0.0
         )
-        
-        contents = []
-        if text.strip():
-            contents.append(f"Clinical Note Text:\n{text[:3000]}")
-            
-        if image_base64:
-            contents.append({
-                "mime_type": "image/jpeg",
-                "data": base64.b64decode(image_base64)
-            })
-            
-        try:
-            # Force strictly structured JSON using Gemini's native MIME type control
-            response = model.generate_content(
-                contents,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0
-                )
-            )
-            return response.text
-        except Exception as e:
-            return f'{{"error": "Gemini API Failed. Details: {str(e)}"}}'
-
-    else:
-        # --- OLLAMA EXECUTION (LOCAL EDGE) ---
-        content_payload = [{"type": "text", "text": system_instructions}]
-        
-        if text.strip():
-            content_payload.append({
-                "type": "text", 
-                "text": f"Clinical Note Text:\n{text[:3000]}"
-            })
-            
-        if image_base64:
-            content_payload.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_base64}"
-                }
-            })
-
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[{"role": "user", "content": content_payload}],
-                temperature=0.0
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f'{{"error": "Ollama API Connection Failed. Details: {str(e)}"}}'
+        return response.choices[0].message.content
+    except Exception as e:
+        return f'{{"error": "API Connection Failed. Details: {str(e)}"}}'
