@@ -1,31 +1,31 @@
 import os
+import base64
 import streamlit as st
 from openai import OpenAI
+import google.generativeai as genai
 from datasets import load_dataset
 import pandas as pd
 
 # -----------------------------------------
 # DUAL ARCHITECTURE ROUTING (Multimodal)
 # -----------------------------------------
-# Safely check for Groq API key in Streamlit Secrets or OS Environment
-groq_api_key = None
+# Safely check for Gemini API key
+gemini_api_key = None
 try:
-    if "GROQ_API_KEY" in st.secrets:
-        groq_api_key = st.secrets["GROQ_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets:
+        gemini_api_key = st.secrets["GEMINI_API_KEY"]
 except FileNotFoundError:
-    pass # No secrets file found locally
+    pass 
 
-if not groq_api_key:
-    groq_api_key = os.environ.get("GROQ_API_KEY")
+if not gemini_api_key:
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
 
 # Route the client connection based on the key
-# Route the client connection based on the key
-# Route the client connection based on the key
-if groq_api_key:
-    # CLOUD MODE: Groq Vision API
-    client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_api_key)
-    MODEL_NAME = "qwen/qwen3.8-27b"
-    print("Agent initialized in CLOUD MODE (Groq Vision)")
+if gemini_api_key:
+    # CLOUD MODE: Gemini 1.5 Pro
+    genai.configure(api_key=gemini_api_key)
+    MODEL_NAME = "gemini-1.5-pro"
+    print("Agent initialized in CLOUD MODE (Gemini Vision)")
 else:
     # LOCAL MODE: Ollama Vision
     client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
@@ -41,7 +41,6 @@ def load_clinical_data():
     dataset = load_dataset("starmpcc/Asclepius-Synthetic-Clinical-Notes", split="train[:20]")
     df = pd.DataFrame(dataset)
     
-    # Handle schema variations dynamically
     if 'text' not in df.columns:
         if 'input' in df.columns:
             df['text'] = df['input']
@@ -70,29 +69,60 @@ def extract_clinical_data(text: str = "", image_base64: str = None):
     Return valid JSON only, with no markdown code block formatting or extra conversational text.
     """
 
-    # Build the multimodal payload dynamically
-    content_payload = [{"type": "text", "text": system_instructions}]
-    
-    if text.strip():
-        content_payload.append({
-            "type": "text", 
-            "text": f"Clinical Note Text:\n{text[:3000]}"
-        })
-        
-    if image_base64:
-        content_payload.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{image_base64}"
-            }
-        })
-
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": content_payload}],
-            temperature=0.0
+    if gemini_api_key:
+        # --- GEMINI EXECUTION (CLOUD) ---
+        model = genai.GenerativeModel(
+            model_name=MODEL_NAME,
+            system_instruction=system_instructions
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f'{{"error": "API Connection Failed. Using Model: {MODEL_NAME}. Details: {str(e)}"}}'
+        
+        contents = []
+        if text.strip():
+            contents.append(f"Clinical Note Text:\n{text[:3000]}")
+            
+        if image_base64:
+            contents.append({
+                "mime_type": "image/jpeg",
+                "data": base64.b64decode(image_base64)
+            })
+            
+        try:
+            # Force strictly structured JSON using Gemini's native MIME type control
+            response = model.generate_content(
+                contents,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0
+                )
+            )
+            return response.text
+        except Exception as e:
+            return f'{{"error": "Gemini API Failed. Details: {str(e)}"}}'
+
+    else:
+        # --- OLLAMA EXECUTION (LOCAL EDGE) ---
+        content_payload = [{"type": "text", "text": system_instructions}]
+        
+        if text.strip():
+            content_payload.append({
+                "type": "text", 
+                "text": f"Clinical Note Text:\n{text[:3000]}"
+            })
+            
+        if image_base64:
+            content_payload.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_base64}"
+                }
+            })
+
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": content_payload}],
+                temperature=0.0
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f'{{"error": "Ollama API Connection Failed. Details: {str(e)}"}}'
