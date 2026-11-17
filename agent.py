@@ -1,30 +1,27 @@
 import os
-import json
-import base64
 import streamlit as st
 from openai import OpenAI
-import google.generativeai as genai
 from datasets import load_dataset
 import pandas as pd
 
 # -----------------------------------------
 # DUAL ARCHITECTURE ROUTING (Multimodal)
 # -----------------------------------------
-gemini_api_key = None
+groq_api_key = None
 try:
-    if "GEMINI_API_KEY" in st.secrets:
-        gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    if "GROQ_API_KEY" in st.secrets:
+        groq_api_key = st.secrets["GROQ_API_KEY"]
 except FileNotFoundError:
     pass 
 
-if not gemini_api_key:
-    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+if not groq_api_key:
+    groq_api_key = os.environ.get("GROQ_API_KEY")
 
-if gemini_api_key:
-    # CLOUD MODE: Gemini 1.5 Flash via Official SDK
-    genai.configure(api_key=gemini_api_key)
-    MODEL_NAME = "gemini-1.5-flash"
-    print("Agent initialized in CLOUD MODE (Gemini Vision)")
+if groq_api_key:
+    # CLOUD MODE: Groq Vision API
+    client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_api_key)
+    MODEL_NAME = "qwen/qwen3.8-27b"
+    print("Agent initialized in CLOUD MODE (Groq Vision)")
 else:
     # LOCAL MODE: Ollama Vision
     client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
@@ -61,60 +58,28 @@ def extract_clinical_data(text: str = "", image_base64: str = None):
     do not guess. Output "UNREADABLE" for that specific item.
     """
 
-    if gemini_api_key:
-        # --- GEMINI NATIVE SDK ---
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=system_instructions
+    content_payload = [{"type": "text", "text": f"{system_instructions}\n\nReturn valid JSON only, with no markdown formatting."}]
+    
+    if text.strip():
+        content_payload.append({
+            "type": "text", 
+            "text": f"Clinical Note Text:\n{text[:3000]}"
+        })
+        
+    if image_base64:
+        content_payload.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{image_base64}"
+            }
+        })
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": content_payload}],
+            temperature=0.0
         )
-        
-        contents = []
-        if text.strip():
-            contents.append(f"Clinical Note Text:\n{text[:3000]}")
-            
-        if image_base64:
-            contents.append({
-                "mime_type": "image/jpeg",
-                "data": base64.b64decode(image_base64)
-            })
-            
-        try:
-            # Native JSON enforcement
-            response = model.generate_content(
-                contents,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0
-                )
-            )
-            return response.text
-        except Exception as e:
-            return f'{{"error": "Gemini API Failed. Details: {str(e)}"}}'
-
-    else:
-        # --- OLLAMA OPENAI SDK ---
-        content_payload = [{"type": "text", "text": f"{system_instructions}\n\nReturn valid JSON only, with no markdown formatting."}]
-        
-        if text.strip():
-            content_payload.append({
-                "type": "text", 
-                "text": f"Clinical Note Text:\n{text[:3000]}"
-            })
-            
-        if image_base64:
-            content_payload.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_base64}"
-                }
-            })
-
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[{"role": "user", "content": content_payload}],
-                temperature=0.0
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f'{{"error": "API Connection Failed. Details: {str(e)}"}}'
+        return response.choices[0].message.content
+    except Exception as e:
+        return f'{{"error": "API Connection Failed. Details: {str(e)}"}}'

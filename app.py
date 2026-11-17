@@ -20,18 +20,17 @@ df_samples = load_clinical_data()
 # Detect execution environment (Cloud vs Local Edge)
 is_cloud = False
 try:
-    if "GEMINI_API_KEY" in st.secrets or os.environ.get("GEMINI_API_KEY"):
+    if "GROQ_API_KEY" in st.secrets or os.environ.get("GROQ_API_KEY"):
         is_cloud = True
 except Exception:
-    is_cloud = bool(os.environ.get("GEMINI_API_KEY"))
+    is_cloud = bool(os.environ.get("GROQ_API_KEY"))
 
 if is_cloud:
-    model_label = "cloud-hosted Gemini 1.5 Flash via Google AI Studio"
-    status_badge = "☁️ **Active Architecture:** Cloud Inference (`gemini-1.5-flash`)"
+    model_label = "cloud-hosted Qwen 3.8 Vision via Groq"
+    status_badge = "☁️ **Active Architecture:** Cloud Inference (`qwen/qwen3.8-27b` via Groq)"
 else:
     model_label = "local Llama 3.2 Vision via Ollama"
     status_badge = "💻 **Active Architecture:** Local Edge Inference (`llama3.2-vision` via Ollama)"
-
 # -----------------------------------------
 # HEADER
 # -----------------------------------------
