@@ -22,7 +22,7 @@ if not groq_api_key:
 if groq_api_key:
     # CLOUD MODE: Groq API
     client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_api_key)
-    MODEL_NAME = "llama-3.3-70b-versatile"
+    MODEL_NAME = "openai/gpt-oss-120b"
     print("Agent initialized in CLOUD MODE (Groq)")
 else:
     # LOCAL MODE: Ollama
