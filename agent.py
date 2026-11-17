@@ -1,6 +1,9 @@
 import os
+import json
+import base64
 import streamlit as st
 from openai import OpenAI
+import google.generativeai as genai
 from datasets import load_dataset
 import pandas as pd
 
@@ -18,11 +21,8 @@ if not gemini_api_key:
     gemini_api_key = os.environ.get("GEMINI_API_KEY")
 
 if gemini_api_key:
-    # CLOUD MODE: Gemini via OpenAI Compatibility API
-    client = OpenAI(
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        api_key=gemini_api_key
-    )
+    # CLOUD MODE: Gemini 1.5 Flash via Official SDK
+    genai.configure(api_key=gemini_api_key)
     MODEL_NAME = "gemini-1.5-flash"
     print("Agent initialized in CLOUD MODE (Gemini Vision)")
 else:
@@ -36,10 +36,8 @@ else:
 # -----------------------------------------
 @st.cache_data
 def load_clinical_data():
-    """Loads open-source synthetic clinical notes from Hugging Face."""
     dataset = load_dataset("starmpcc/Asclepius-Synthetic-Clinical-Notes", split="train[:20]")
     df = pd.DataFrame(dataset)
-    
     if 'text' not in df.columns:
         if 'input' in df.columns:
             df['text'] = df['input']
@@ -48,12 +46,9 @@ def load_clinical_data():
         else:
             string_cols = df.select_dtypes(include=['object']).columns
             df['text'] = df[string_cols[0]] if len(string_cols) > 0 else "Error: No text column found."
-            
     return df
 
 def extract_clinical_data(text: str = "", image_base64: str = None):
-    """Sends unstructured text or base64 images to the active Vision LLM."""
-    
     system_instructions = """
     You are an expert clinical data extraction assistant. Parse the provided clinical record 
     (which may be text or a handwritten prescription image) and output a strict JSON object containing:
@@ -64,33 +59,62 @@ def extract_clinical_data(text: str = "", image_base64: str = None):
 
     CRITICAL PHARMACY RULE: If any handwritten text (especially medications) is illegible, 
     do not guess. Output "UNREADABLE" for that specific item.
-
-    Return valid JSON only, with no markdown code block formatting or extra conversational text.
     """
 
-    # We use the exact same payload structure for both Local Edge and Cloud!
-    content_payload = [{"type": "text", "text": system_instructions}]
-    
-    if text.strip():
-        content_payload.append({
-            "type": "text", 
-            "text": f"Clinical Note Text:\n{text[:3000]}"
-        })
-        
-    if image_base64:
-        content_payload.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{image_base64}"
-            }
-        })
-
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": content_payload}],
-            temperature=0.0
+    if gemini_api_key:
+        # --- GEMINI NATIVE SDK ---
+        model = genai.GenerativeModel(
+            model_name=MODEL_NAME,
+            system_instruction=system_instructions
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f'{{"error": "API Connection Failed. Details: {str(e)}"}}'
+        
+        contents = []
+        if text.strip():
+            contents.append(f"Clinical Note Text:\n{text[:3000]}")
+            
+        if image_base64:
+            contents.append({
+                "mime_type": "image/jpeg",
+                "data": base64.b64decode(image_base64)
+            })
+            
+        try:
+            # Native JSON enforcement
+            response = model.generate_content(
+                contents,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0
+                )
+            )
+            return response.text
+        except Exception as e:
+            return f'{{"error": "Gemini API Failed. Details: {str(e)}"}}'
+
+    else:
+        # --- OLLAMA OPENAI SDK ---
+        content_payload = [{"type": "text", "text": f"{system_instructions}\n\nReturn valid JSON only, with no markdown formatting."}]
+        
+        if text.strip():
+            content_payload.append({
+                "type": "text", 
+                "text": f"Clinical Note Text:\n{text[:3000]}"
+            })
+            
+        if image_base64:
+            content_payload.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_base64}"
+                }
+            })
+
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": content_payload}],
+                temperature=0.0
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f'{{"error": "API Connection Failed. Details: {str(e)}"}}'
