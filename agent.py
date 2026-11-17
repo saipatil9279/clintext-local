@@ -24,7 +24,7 @@ if not gemini_api_key:
 if gemini_api_key:
     # CLOUD MODE: Gemini 1.5 Pro
     genai.configure(api_key=gemini_api_key)
-    MODEL_NAME = "gemini-1.5-pro"
+    MODEL_NAME = "gemini-1.5-pro-latest"
     print("Agent initialized in CLOUD MODE (Gemini Vision)")
 else:
     # LOCAL MODE: Ollama Vision

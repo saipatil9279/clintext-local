@@ -27,7 +27,7 @@ except Exception:
 
 if is_cloud:
     model_label = "cloud-hosted Gemini 1.5 Pro via Google AI Studio"
-    status_badge = "☁️ **Active Architecture:** Cloud Inference (`gemini-1.5-pro`)"
+    status_badge = "☁️ **Active Architecture:** Cloud Inference (`gemini-1.5-pro-latest`)"
 else:
     model_label = "local Llama 3.2 Vision via Ollama"
     status_badge = "💻 **Active Architecture:** Local Edge Inference (`llama3.2-vision` via Ollama)"
