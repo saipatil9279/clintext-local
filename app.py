@@ -1,5 +1,6 @@
-import streamlit as st
+import os
 import json
+import streamlit as st
 import PyPDF2
 from agent import load_clinical_data, extract_clinical_data
 
@@ -14,11 +15,27 @@ st.set_page_config(
 
 df_samples = load_clinical_data()
 
+# Detect execution environment (Cloud vs Local Edge)
+is_cloud = False
+try:
+    if "GROQ_API_KEY" in st.secrets or os.environ.get("GROQ_API_KEY"):
+        is_cloud = True
+except Exception:
+    is_cloud = bool(os.environ.get("GROQ_API_KEY"))
+
+if is_cloud:
+    model_label = "cloud-hosted GPT-OSS-120B via Groq API"
+    status_badge = "☁️ **Active Architecture:** Cloud Inference (`openai/gpt-oss-120b` via Groq)"
+else:
+    model_label = "local Llama 3.2 via Ollama"
+    status_badge = "💻 **Active Architecture:** Local Edge Inference (`llama3.2:3b` via Ollama)"
+
 # -----------------------------------------
 # HEADER
 # -----------------------------------------
 st.title("🩺 ClinText: AI Medical Scribe")
-st.markdown("Transform unstructured clinical PDFs into structured insights using local Llama 3.2.")
+st.markdown(f"Transform unstructured clinical PDFs into structured insights using **{model_label}**.")
+st.caption(status_badge)
 st.markdown("---")
 
 # -----------------------------------------
@@ -34,15 +51,30 @@ with col_input:
     input_text = ""
     
     with tab_sample:
-        selected_index = st.selectbox("Select a Hugging Face Sample:", range(len(df_samples)), format_func=lambda x: f"Patient Record #{x+1}")
-        input_text = st.text_area("Review/Edit Text:", value=df_samples.iloc[selected_index]['text'], height=300, key="sample_text")
+        selected_index = st.selectbox(
+            "Select a Hugging Face Sample:",
+            range(len(df_samples)),
+            format_func=lambda x: f"Patient Record #{x+1}"
+        )
+        sample_text = st.text_area(
+            "Review/Edit Text:",
+            value=df_samples.iloc[selected_index]['text'],
+            height=300,
+            key="sample_text"
+        )
+        input_text = sample_text
         
     with tab_pdf:
         uploaded_file = st.file_uploader("Upload Medical Record (PDF)", type=["pdf"])
         if uploaded_file:
             pdf_reader = PyPDF2.PdfReader(uploaded_file)
-            pdf_text = "".join([page.extract_text() for page in pdf_reader.pages])
-            input_text = st.text_area("Extracted PDF Text:", value=pdf_text, height=300, key="pdf_text")
+            pdf_text = "".join([page.extract_text() or "" for page in pdf_reader.pages])
+            input_text = st.text_area(
+                "Extracted PDF Text:",
+                value=pdf_text,
+                height=300,
+                key="pdf_text"
+            )
 
     run_extraction = st.button("⚡ Extract Clinical Insights", type="primary", use_container_width=True)
 
@@ -53,7 +85,7 @@ with col_dashboard:
     st.subheader("🏥 Patient Summary Dashboard")
     
     if run_extraction and input_text.strip():
-        with st.spinner("Analyzing record with LLM..."):
+        with st.spinner(f"Analyzing record with {model_label}..."):
             raw_output = extract_clinical_data(input_text)
             
             try:
@@ -62,8 +94,8 @@ with col_dashboard:
                 
                 st.info(f"**Primary Diagnosis:** {data.get('primary_diagnosis', 'Not specified')}")
                 
-                alerts = data.get('potential_risks_or_alerts', [])
-                if alerts and alerts[0].lower() != "none":
+                alerts = data.get("potential_risks_or_alerts", [])
+                if alerts and str(alerts[0]).strip().lower() != "none":
                     for alert in alerts:
                         st.error(f"⚠️ **CRITICAL ALERT:** {alert}")
                 
@@ -82,6 +114,14 @@ with col_dashboard:
                         st.markdown(f"- {action}")
                 else:
                     st.write("No follow-up actions specified.")
+                
+                st.download_button(
+                    label="📥 Download Structured JSON",
+                    data=json.dumps(data, indent=2),
+                    file_name="clinical_summary.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
                     
                 with st.expander("🛠️ View Raw JSON (Developer)"):
                     st.json(data)
