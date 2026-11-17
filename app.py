@@ -26,8 +26,8 @@ except Exception:
     is_cloud = bool(os.environ.get("GEMINI_API_KEY"))
 
 if is_cloud:
-    model_label = "cloud-hosted Gemini 1.5 Pro via Google AI Studio"
-    status_badge = "☁️ **Active Architecture:** Cloud Inference (`gemini-1.5-pro-latest`)"
+    model_label = "cloud-hosted Gemini 1.5 Flash via Google AI Studio"
+    status_badge = "☁️ **Active Architecture:** Cloud Inference (`gemini-1.5-flash`)"
 else:
     model_label = "local Llama 3.2 Vision via Ollama"
     status_badge = "💻 **Active Architecture:** Local Edge Inference (`llama3.2-vision` via Ollama)"

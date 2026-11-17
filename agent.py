@@ -22,9 +22,9 @@ if not gemini_api_key:
 
 # Route the client connection based on the key
 if gemini_api_key:
-    # CLOUD MODE: Gemini 1.5 Pro
+    # CLOUD MODE: Gemini 1.5 Flash
     genai.configure(api_key=gemini_api_key)
-    MODEL_NAME = "gemini-1.5-pro-latest"
+    MODEL_NAME = "gemini-1.5-flash"
     print("Agent initialized in CLOUD MODE (Gemini Vision)")
 else:
     # LOCAL MODE: Ollama Vision
